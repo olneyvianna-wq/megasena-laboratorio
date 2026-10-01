@@ -1,10 +1,13 @@
 from datetime import date
+import os
+import threading
 from fastapi import FastAPI, HTTPException, UploadFile, File
 import pandas as pd
 import io
 
 from .db import get_conn, init_db
 from .analytics import combination_probability, draw_features, frequencies, pair_frequencies, summary
+from .caixa import fetch_contest, parse_result
 
 app = FastAPI(
     title="Mega-Sena Laboratório",
@@ -15,6 +18,30 @@ app = FastAPI(
 @app.on_event("startup")
 def startup():
     init_db()
+    if os.getenv("BACKFILL_ON_STARTUP", "false").lower() == "true":
+        threading.Thread(target=_background_backfill, daemon=True).start()
+
+def _background_backfill():
+    try:
+        latest = parse_result(fetch_contest())["contest"]
+        with get_conn() as conn:
+            for contest in range(1, latest + 1):
+                try:
+                    result = parse_result(fetch_contest(contest))
+                    n = result["numbers"]
+                    if len(n) != 6 or len(set(n)) != 6:
+                        continue
+                    cur = conn.execute(
+                        "INSERT INTO draws (contest, draw_date, n1,n2,n3,n4,n5,n6) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (contest) DO NOTHING",
+                        (result["contest"], result["draw_date"], *n),
+                    )
+                    if contest % 50 == 0:
+                        conn.commit()
+                except Exception:
+                    continue
+            conn.commit()
+    except Exception:
+        pass
 
 @app.get("/")
 def root():
