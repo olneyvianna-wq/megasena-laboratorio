@@ -1,56 +1,52 @@
-"""Backfill the historical Mega-Sena draws from the Caixa API.
-
-Usage:
-    DATABASE_URL='...' python scripts/backfill_caixa.py
-
-The script first reads the current contest from Caixa, then requests
-contests 1..latest and inserts them idempotently.
-"""
-
+"""Fast historical backfill from the official Caixa Mega-Sena API."""
 import os
 import sys
-import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.caixa import fetch_contest, parse_result
 from app.db import get_conn, init_db
 
+def fetch_one(contest):
+    try:
+        result = parse_result(fetch_contest(contest))
+        n = result["numbers"]
+        if len(n) != 6 or len(set(n)) != 6:
+            return None
+        return result
+    except Exception as exc:
+        print(f"Falha no concurso {contest}: {exc}", flush=True)
+        return None
+
 def main():
     init_db()
     latest = parse_result(fetch_contest())["contest"]
-    print(f"Último concurso informado pela CAIXA: {latest}")
+    print(f"Último concurso informado pela CAIXA: {latest}", flush=True)
 
     inserted = 0
-    errors = 0
+    results = []
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        futures = [pool.submit(fetch_one, contest) for contest in range(1, latest + 1)]
+        for i, future in enumerate(as_completed(futures), 1):
+            result = future.result()
+            if result:
+                results.append(result)
+            if i % 200 == 0:
+                print(f"Consultados: {i}/{latest}", flush=True)
 
+    results.sort(key=lambda x: x["contest"])
     with get_conn() as conn:
-        for contest in range(1, latest + 1):
-            try:
-                result = parse_result(fetch_contest(contest))
-                n = result["numbers"]
-                if len(n) != 6 or len(set(n)) != 6:
-                    raise ValueError("resultado inválido")
-
-                cur = conn.execute(
-                    """INSERT INTO draws
-                       (contest, draw_date, n1,n2,n3,n4,n5,n6)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                       ON CONFLICT (contest) DO NOTHING""",
-                    (result["contest"], result["draw_date"], *n),
-                )
-                inserted += cur.rowcount
-                if contest % 100 == 0:
-                    conn.commit()
-                    print(f"{contest}/{latest} — novos: {inserted}")
-                time.sleep(0.05)
-            except Exception as exc:
-                errors += 1
-                print(f"Falha no concurso {contest}: {exc}")
-
+        for result in results:
+            n = result["numbers"]
+            cur = conn.execute(
+                "INSERT INTO draws (contest, draw_date, n1,n2,n3,n4,n5,n6) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (contest) DO NOTHING",
+                (result["contest"], result["draw_date"], *n),
+            )
+            inserted += cur.rowcount
         conn.commit()
 
-    print(f"Concluído. Inseridos: {inserted}; erros: {errors}")
+    print(f"Concluído. Concursos processados: {len(results)}; novos inseridos: {inserted}", flush=True)
 
 if __name__ == "__main__":
     main()
