@@ -1,0 +1,28 @@
+CREATE TABLE IF NOT EXISTS draws (
+    contest INTEGER PRIMARY KEY,
+    draw_date DATE,
+    n1 SMALLINT NOT NULL,
+    n2 SMALLINT NOT NULL,
+    n3 SMALLINT NOT NULL,
+    n4 SMALLINT NOT NULL,
+    n5 SMALLINT NOT NULL,
+    n6 SMALLINT NOT NULL,
+    inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT draws_numbers_range CHECK (
+        n1 BETWEEN 1 AND 60 AND n2 BETWEEN 1 AND 60 AND n3 BETWEEN 1 AND 60 AND
+        n4 BETWEEN 1 AND 60 AND n5 BETWEEN 1 AND 60 AND n6 BETWEEN 1 AND 60
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_draws_date ON draws(draw_date);
+
+CREATE TABLE IF NOT EXISTS ingestion_runs (
+    id BIGSERIAL PRIMARY KEY,
+    source TEXT NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at TIMESTAMPTZ,
+    rows_received INTEGER NOT NULL DEFAULT 0,
+    rows_inserted INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'started',
+    error_message TEXT
+);
