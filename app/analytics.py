@@ -81,6 +81,53 @@ def statistical_report(draws):
     }
 
 
+def independence_report(draws):
+    """Tests temporal dependence between consecutive Mega-Sena draws."""
+    if len(draws) < 2:
+        return {"draws": len(draws)}
+
+    nums = [set(normalize_numbers(d)) for d in draws]
+    overlaps = np.array([len(nums[i] & nums[i-1]) for i in range(1, len(nums))], dtype=int)
+
+    # Under independent draws, the expected overlap of two 6-number draws is 36/60 = 0.6.
+    overlap_mean = float(overlaps.mean())
+    overlap_counts = {str(k): int(np.sum(overlaps == k)) for k in range(7)}
+    expected_overlap = 0.6
+
+    # Indicator autocorrelation for each number and for aggregate features.
+    def autocorr(values):
+        x = np.asarray(values, dtype=float)
+        if len(x) < 3 or np.std(x[:-1]) == 0 or np.std(x[1:]) == 0:
+            return None
+        return float(np.corrcoef(x[:-1], x[1:])[0, 1])
+
+    number_autocorr = []
+    for n in range(1, 61):
+        indicator = np.array([1 if n in s else 0 for s in nums], dtype=float)
+        number_autocorr.append({"number": n, "lag1_autocorr": autocorr(indicator)})
+
+    sums = np.array([sum(s) for s in (sorted(x) for x in nums)], dtype=float)
+    odd = np.array([sum(n % 2 for n in s) for s in nums], dtype=float)
+    consecutive = np.array([sum(b == a + 1 for a, b in zip(sorted(s), sorted(s)[1:])) for s in nums], dtype=float)
+
+    return {
+        "draws": len(draws),
+        "consecutive_overlap": {
+            "observed_mean": overlap_mean,
+            "theoretical_mean": expected_overlap,
+            "difference": overlap_mean - expected_overlap,
+            "counts": overlap_counts,
+            "method_note": "For two independent 6-of-60 draws, expected intersection size is 0.6."
+        },
+        "lag1_autocorrelation": {
+            "sum": autocorr(sums),
+            "odd_count": autocorr(odd),
+            "consecutive_pair_count": autocorr(consecutive),
+            "number_indicators": number_autocorr,
+        },
+    }
+
+
 def _zodiac(month, day):
     # Tropical zodiac with conventional boundaries.
     md = (month, day)
