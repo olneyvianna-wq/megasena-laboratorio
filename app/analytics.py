@@ -392,7 +392,7 @@ def ordered_universes_report(draws):
         vals = arr[:, k]
         # Exact support of the k-th order statistic in a uniform 6-of-60 draw:
         # k+1 through 60-(5-k), i.e. k+1 .. 55+k (1-based position).
-        lo, hi = k + 1, 55 + k + 1
+        lo, hi = k + 1, 55 + k
         counts = np.bincount(vals, minlength=61)[1:]
         # Theoretical P(X_(k)=x) = C(x-1,k) C(60-x,5-k) / C(60,6).
         probs = np.zeros(60, dtype=float)
