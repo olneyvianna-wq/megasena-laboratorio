@@ -10,36 +10,55 @@ from app.caixa import fetch_contest, parse_result
 from app.db import get_conn, init_db
 
 
-def fetch_one(contest):
-    for attempt in range(3):
+def fetch_with_retry(contest=None, attempts=5):
+    for attempt in range(1, attempts + 1):
         try:
-            result = parse_result(fetch_contest(contest))
-            n = result["numbers"]
-            if len(n) != 6 or len(set(n)) != 6:
-                return None
-            return result
+            return parse_result(fetch_contest(contest))
         except Exception as exc:
-            if attempt == 2:
-                print(f"Falha no concurso {contest}: {exc}", flush=True)
-            else:
-                time.sleep(0.5 * (attempt + 1))
-    return None
+            if attempt == attempts:
+                raise
+            wait = min(8.0, 0.75 * (2 ** (attempt - 1)))
+            print(f"Tentativa {attempt}/{attempts} falhou para {contest or 'ultimo'}: {exc}; aguardando {wait:.1f}s", flush=True)
+            time.sleep(wait)
+
+
+def fetch_one(contest):
+    try:
+        result = fetch_with_retry(contest)
+        n = result["numbers"]
+        if len(n) != 6 or len(set(n)) != 6:
+            raise ValueError("resultado invalido")
+        return result
+    except Exception as exc:
+        print(f"Falha no concurso {contest}: {exc}", flush=True)
+        return None
 
 
 def main():
     init_db()
-    latest = parse_result(fetch_contest())["contest"]
-    print(f"Último concurso informado pela CAIXA: {latest}", flush=True)
+    try:
+        latest = fetch_with_retry()["contest"]
+    except Exception as exc:
+        # A ingestao nao deve impedir o servico de subir quando a API externa estiver fora.
+        print(f"AVISO: CAIXA indisponivel no momento ({exc}). Backfill adiado.", flush=True)
+        return
+
+    print(f"Ultimo concurso informado pela CAIXA: {latest}", flush=True)
+
+    with get_conn() as conn:
+        existing = {r[0] for r in conn.execute("SELECT contest FROM draws").fetchall()}
+    missing = [c for c in range(1, latest + 1) if c not in existing]
+    print(f"Concursos existentes no banco: {len(existing)}; faltantes: {len(missing)}", flush=True)
 
     results = []
-    with ThreadPoolExecutor(max_workers=20) as pool:
-        futures = [pool.submit(fetch_one, contest) for contest in range(1, latest + 1)]
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        futures = [pool.submit(fetch_one, contest) for contest in missing]
         for i, future in enumerate(as_completed(futures), 1):
             result = future.result()
             if result:
                 results.append(result)
-            if i % 200 == 0:
-                print(f"Consultados: {i}/{latest}", flush=True)
+            if i % 100 == 0:
+                print(f"Consultados: {i}/{len(missing)}", flush=True)
 
     results.sort(key=lambda x: x["contest"])
     inserted = 0
@@ -62,9 +81,9 @@ def main():
         ).fetchone()
 
     print(
-        f"Concluído. Concursos processados: {len(results)}; novos inseridos: {inserted}; "
+        f"Concluido. Processados: {len(results)}; novos inseridos: {inserted}; "
         f"banco: total={row[0]}, primeiro={row[1]} ({row[3]}), "
-        f"último={row[2]} ({row[4]})",
+        f"ultimo={row[2]} ({row[4]})",
         flush=True,
     )
 
