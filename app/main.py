@@ -178,3 +178,89 @@ async def import_csv(file: UploadFile = File(...)):
             inserted += result.rowcount
         conn.commit()
     return {"received": len(df), "inserted": inserted}
+
+
+@app.post("/admin/build-position-universes")
+def build_position_universes():
+    """
+    Materializa no PostgreSQL os seis sub-universos posicionais históricos.
+    Cada linha representa uma dezena que efetivamente ocupou aquela posição.
+    """
+    tables = [
+        ("ur_primeira_casa", "n1"),
+        ("ur_segunda_casa", "n2"),
+        ("ur_terceira_casa", "n3"),
+        ("ur_quarta_casa", "n4"),
+        ("ur_quinta_casa", "n5"),
+        ("ur_sexta_casa", "n6"),
+    ]
+    result = {}
+    with get_conn() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ur_primeira_casa (
+                numero INTEGER PRIMARY KEY,
+                ocorrencias INTEGER NOT NULL,
+                percentual NUMERIC(12,6) NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ur_segunda_casa (
+                numero INTEGER PRIMARY KEY,
+                ocorrencias INTEGER NOT NULL,
+                percentual NUMERIC(12,6) NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ur_terceira_casa (
+                numero INTEGER PRIMARY KEY,
+                ocorrencias INTEGER NOT NULL,
+                percentual NUMERIC(12,6) NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ur_quarta_casa (
+                numero INTEGER PRIMARY KEY,
+                ocorrencias INTEGER NOT NULL,
+                percentual NUMERIC(12,6) NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ur_quinta_casa (
+                numero INTEGER PRIMARY KEY,
+                ocorrencias INTEGER NOT NULL,
+                percentual NUMERIC(12,6) NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ur_sexta_casa (
+                numero INTEGER PRIMARY KEY,
+                ocorrencias INTEGER NOT NULL,
+                percentual NUMERIC(12,6) NOT NULL
+            )
+        """)
+        total = conn.execute("SELECT COUNT(*) FROM draws").fetchone()[0]
+        if total == 0:
+            raise HTTPException(409, "A tabela draws está vazia.")
+
+        for table, column in tables:
+            conn.execute(f"TRUNCATE TABLE {table}")
+            rows = conn.execute(
+                f"SELECT {column}, COUNT(*) FROM draws GROUP BY {column} ORDER BY {column}"
+            ).fetchall()
+            for numero, ocorrencias in rows:
+                percentual = (float(ocorrencias) / float(total)) * 100.0
+                conn.execute(
+                    f"INSERT INTO {table} (numero, ocorrencias, percentual) VALUES (%s,%s,%s)",
+                    (numero, ocorrencias, percentual),
+                )
+            result[table] = {
+                "minimo": rows[0][0] if rows else None,
+                "maximo": rows[-1][0] if rows else None,
+                "valores_distintos": len(rows),
+                "dados": [
+                    {"numero": r[0], "ocorrencias": r[1], "percentual": float(r[1] / total * 100.0)}
+                    for r in rows
+                ],
+            }
+        conn.commit()
+    return {"total_concursos": total, "subuniversos": result}
