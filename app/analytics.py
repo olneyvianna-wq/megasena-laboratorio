@@ -81,30 +81,30 @@ def statistical_report(draws):
     }
 
 
-def _chi_square_uniform(counts):
-    counts = np.asarray(counts, dtype=float)
-    if len(counts) < 2 or counts.sum() == 0:
-        return {"chi2": None, "p_value": None}
-    result = chisquare(counts)
-    return {"chi2": float(result.statistic), "p_value": float(result.pvalue)}
-
-
 def _zodiac(month, day):
-    # Tropical zodiac, conventional date boundaries.
+    # Tropical zodiac with conventional boundaries.
+    md = (month, day)
     boundaries = [
-        ((1, 20), "Aquario"), ((2, 19), "Peixes"), ((3, 21), "Aries"),
-        ((4, 20), "Touro"), ((5, 21), "Gemeos"), ((6, 21), "Cancer"),
-        ((7, 23), "Leao"), ((8, 23), "Virgem"), ((9, 23), "Libra"),
-        ((10, 23), "Escorpiao"), ((11, 22), "Sagitario"), ((12, 22), "Capricornio"),
+        ((1, 20), "Aquario"),
+        ((2, 19), "Peixes"),
+        ((3, 21), "Aries"),
+        ((4, 20), "Touro"),
+        ((5, 21), "Gemeos"),
+        ((6, 21), "Cancer"),
+        ((7, 23), "Leao"),
+        ((8, 23), "Virgem"),
+        ((9, 23), "Libra"),
+        ((10, 23), "Escorpiao"),
+        ((11, 22), "Sagitario"),
+        ((12, 22), "Capricornio"),
     ]
-    for (m, d), name in boundaries:
-        if (month, day) < (m, d):
-            return name
-    return "Capricornio" if (month, day) < (1, 20) else "Aquario"
+    for i in range(len(boundaries) - 1, -1, -1):
+        if md >= boundaries[i][0]:
+            return boundaries[i][1]
+    return "Capricornio"
 
 
 def _easter_sunday(year):
-    # Anonymous Gregorian algorithm.
     a = year % 19
     b = year // 100
     c = year % 100
@@ -165,7 +165,6 @@ def _group_report(draws, dates, key_fn):
 
 
 def calendar_report(records):
-    """Analyze calendar/date effects without treating them as causal or predictive."""
     if not records:
         return {"draws": 0}
 
@@ -192,10 +191,6 @@ def calendar_report(records):
         for name, subset in sorted(holiday_groups.items())
     }
 
-    # Number-frequency association tests. Each category is compared to the global
-    # expected frequency (6/N per number), then corrected by Bonferroni.
-    n = len(draws)
-    baseline = np.array([n * 6 / 60.0] * 60)
     association_tests = {}
     for label, groups in {
         "weekday": weekday, "day_parity": day_parity, "month": month,
@@ -204,24 +199,25 @@ def calendar_report(records):
         tests = []
         for group, info in groups.items():
             counts = np.array([x["count"] for x in info["number_frequency"]], dtype=float)
-            # Scale global expectation to the group's six-number observations.
             expected = np.full(60, counts.sum() / 60.0)
             chi = chisquare(counts, expected)
-            tests.append({"group": group, "chi2": float(chi.statistic), "p_value": float(chi.pvalue), "n_draws": info["draws"]})
+            tests.append({
+                "group": group,
+                "chi2": float(chi.statistic),
+                "p_value": float(chi.pvalue),
+                "n_draws": info["draws"],
+            })
         m = max(1, len(tests))
         for t in tests:
             t["p_value_bonferroni"] = min(1.0, t["p_value"] * m)
         association_tests[label] = tests
 
-    # Aggregate date-level effects.
-    sum_by_day = {k: [sum(normalize_numbers(d)) for d in subset] for k, subset in {}.items()}
     weekday_counts = Counter(d.strftime("%A") for d in dates)
     parity_counts = Counter("par" if d.day % 2 == 0 else "impar" for d in dates)
     month_counts = Counter(d.month for d in dates)
     zodiac_counts = Counter(_zodiac(d.month, d.day) for d in dates)
     holiday_counts = Counter(_holiday_name(d) or "dia_comum" for d in dates)
 
-    # Kruskal-Wallis is robust to non-normal sum distributions.
     def kw(groups):
         vals = [np.array([sum(normalize_numbers(x)) for x in subset], dtype=float) for subset in groups if len(subset) >= 2]
         if len(vals) < 2:
@@ -229,12 +225,8 @@ def calendar_report(records):
         r = kruskal(*vals)
         return {"statistic": float(r.statistic), "p_value": float(r.pvalue)}
 
-    kw_weekday = kw(list(_group_report(draws, dates, lambda d: d.strftime("%A")).values()))
-    kw_month = kw(list(_group_report(draws, dates, lambda d: d.month).values()))
-    kw_zodiac = kw(list(_group_report(draws, dates, lambda d: _zodiac(d.month, d.day)).values()))
-
     return {
-        "draws": n,
+        "draws": len(draws),
         "calendar_counts": {
             "weekday": dict(weekday_counts),
             "day_parity": dict(parity_counts),
@@ -252,9 +244,9 @@ def calendar_report(records):
         },
         "association_tests": association_tests,
         "sum_effect_tests": {
-            "weekday_kruskal": kw_weekday,
-            "month_kruskal": kw_month,
-            "zodiac_kruskal": kw_zodiac,
+            "weekday_kruskal": kw([x for x in _group_report(draws, dates, lambda d: d.strftime("%A")).values()]),
+            "month_kruskal": kw([x for x in _group_report(draws, dates, lambda d: d.month).values()]),
+            "zodiac_kruskal": kw([x for x in _group_report(draws, dates, lambda d: _zodiac(d.month, d.day)).values()]),
         },
         "method_note": "p-values are screening evidence, not proof of predictability; calendar variables can be confounded by the official draw schedule and multiple testing.",
     }
