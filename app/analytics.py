@@ -5,14 +5,17 @@ import numpy as np
 
 TOTAL_COMBINATIONS = math.comb(60, 6)
 
+
 def combination_probability():
     return {"total_combinations": TOTAL_COMBINATIONS, "probability": f"1/{TOTAL_COMBINATIONS}"}
+
 
 def normalize_numbers(numbers):
     nums = sorted(int(x) for x in numbers)
     if len(nums) != 6 or len(set(nums)) != 6 or any(x < 1 or x > 60 for x in nums):
         raise ValueError("Um concurso deve conter 6 dezenas distintas entre 1 e 60.")
     return nums
+
 
 def draw_features(numbers):
     nums = normalize_numbers(numbers)
@@ -27,21 +30,20 @@ def draw_features(numbers):
         "decades": [sum((n - 1) // 10 == d for n in nums) for d in range(6)],
     }
 
+
 def frequencies(draws):
     counter = Counter()
     for draw in draws:
         counter.update(normalize_numbers(draw))
     return [{"number": n, "count": counter[n]} for n in range(1, 61)]
 
+
 def pair_frequencies(draws, top_n=30):
     counter = Counter()
     for draw in draws:
-        nums = normalize_numbers(draw)
-        counter.update(combinations(nums, 2))
-    return [
-        {"pair": list(pair), "count": count}
-        for pair, count in counter.most_common(top_n)
-    ]
+        counter.update(combinations(normalize_numbers(draw), 2))
+    return [{"pair": list(pair), "count": count} for pair, count in counter.most_common(top_n)]
+
 
 def summary(draws):
     if not draws:
@@ -49,13 +51,29 @@ def summary(draws):
     features = [draw_features(d) for d in draws]
     sums = np.array([x["sum"] for x in features])
     odds = Counter(x["odd"] for x in features)
+    low_high = Counter((x["low_1_30"], x["high_31_60"]) for x in features)
+    consecutive = Counter(x["consecutive_pairs"] for x in features)
+    decade_totals = [sum(x["decades"][i] for x in features) for i in range(6)]
     return {
         "draws": len(draws),
-        "sum": {
-            "mean": float(sums.mean()),
-            "min": int(sums.min()),
-            "max": int(sums.max()),
-            "median": float(np.median(sums)),
-        },
+        "sum": {"mean": float(sums.mean()), "std": float(sums.std(ddof=1)), "min": int(sums.min()), "max": int(sums.max()), "median": float(np.median(sums))},
         "odd_even": {str(k): v for k, v in sorted(odds.items())},
+        "low_high": {f"{k[0]}x{k[1]}": v for k, v in sorted(low_high.items())},
+        "consecutive_pairs": {str(k): v for k, v in sorted(consecutive.items())},
+        "decade_occurrences": {str((i + 1) * 10): decade_totals[i] for i in range(6)},
+        "expected_frequency_per_number": len(draws) * 6 / 60,
+    }
+
+
+def statistical_report(draws):
+    freq = frequencies(draws)
+    ranked = sorted(freq, key=lambda x: (-x["count"], x["number"]))
+    least = sorted(freq, key=lambda x: (x["count"], x["number"]))
+    return {
+        "probability": combination_probability(),
+        "summary": summary(draws),
+        "frequencies": freq,
+        "most_frequent": ranked[:10],
+        "least_frequent": least[:10],
+        "pairs_top_30": pair_frequencies(draws, 30),
     }
