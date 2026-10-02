@@ -1,23 +1,55 @@
 import io
 import os
 import threading
+import json
 from fastapi import FastAPI, HTTPException, UploadFile, File
 import pandas as pd
 
 from .db import get_conn, init_db
 from .analytics import combination_probability, frequencies, pair_frequencies, summary, statistical_report, calendar_report
-from .caixa import fetch_contest, parse_result
 
-app = FastAPI(title="Mega-Sena Laboratório", version="0.3.0", description="API para análise estatística dos concursos da Mega-Sena.")
+app = FastAPI(title="Mega-Sena Laboratório", version="0.4.0", description="API para análise estatística dos concursos da Mega-Sena.")
 
 @app.on_event("startup")
 def startup():
     init_db()
+    _startup_report()
     if os.getenv("BACKFILL_ON_STARTUP", "false").lower() == "true":
         threading.Thread(target=_background_backfill, daemon=True).start()
 
+def _startup_report():
+    try:
+        with get_conn() as conn:
+            rows = conn.execute("SELECT contest, draw_date, n1,n2,n3,n4,n5,n6 FROM draws ORDER BY contest").fetchall()
+        draws = [list(r[2:]) for r in rows]
+        records = [(r[0], r[1], list(r[2:])) for r in rows if r[1] is not None]
+        report = statistical_report(draws)
+        cal = calendar_report(records)
+        meta = {
+            "draws": len(draws),
+            "first_contest": rows[0][0] if rows else None,
+            "last_contest": rows[-1][0] if rows else None,
+            "first_date": rows[0][1].isoformat() if rows and rows[0][1] else None,
+            "last_date": rows[-1][1].isoformat() if rows and rows[-1][1] else None,
+        }
+        top = report["most_frequent"]
+        print("MEGASENA_REPORT_001=" + json.dumps({
+            "database": meta,
+            "probability": report["probability"],
+            "summary": report["summary"],
+            "most_frequent": top,
+            "least_frequent": report["least_frequent"],
+            "pairs_top_30": report["pairs_top_30"],
+            "calendar_counts": cal.get("calendar_counts", {}),
+            "sum_effect_tests": cal.get("sum_effect_tests", {}),
+            "association_tests": cal.get("association_tests", {}),
+        }, ensure_ascii=False, separators=(",", ":")), flush=True)
+    except Exception as exc:
+        print(f"MEGASENA_REPORT_001_ERROR={exc}", flush=True)
+
 def _background_backfill():
     try:
+        from .caixa import fetch_contest, parse_result
         latest = parse_result(fetch_contest())["contest"]
         with get_conn() as conn:
             for contest in range(1, latest + 1):
