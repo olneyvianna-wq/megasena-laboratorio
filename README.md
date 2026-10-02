@@ -43,3 +43,4 @@ Documentação: `http://localhost:8000/docs`\n\n### Monte Carlo\n\n`GET /stats/m
 - `DATABASE_URL`: URL PostgreSQL.
 - `PORT`: porta HTTP, usada pelo Railway.
 
+\n\n### Seis universos ordenados\n\n`GET /stats/ordered-universes` analisa as seis posições após ordenar cada concurso. Para cada posição calcula suporte realizável, distribuição histórica e distribuição teórica exata do k-ésimo valor de uma amostra uniforme de 6 dezenas em 60. A condição conjunta é `x1 < x2 < ... < x6`.\n
