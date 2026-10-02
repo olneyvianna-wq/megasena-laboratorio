@@ -5,10 +5,10 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 import pandas as pd
 
 from .db import get_conn, init_db
-from .analytics import combination_probability, draw_features, frequencies, pair_frequencies, summary, statistical_report
+from .analytics import combination_probability, frequencies, pair_frequencies, summary, statistical_report, calendar_report
 from .caixa import fetch_contest, parse_result
 
-app = FastAPI(title="Mega-Sena Laboratório", version="0.2.0", description="API para análise estatística dos concursos da Mega-Sena.")
+app = FastAPI(title="Mega-Sena Laboratório", version="0.3.0", description="API para análise estatística dos concursos da Mega-Sena.")
 
 @app.on_event("startup")
 def startup():
@@ -32,6 +32,8 @@ def _background_backfill():
                 except Exception:
                     continue
             conn.commit()
+    except Exception:
+        pass
 
 @app.get("/")
 def root():
@@ -83,6 +85,13 @@ def stats_report():
     report["database"] = {"draws": meta[0], "first_contest": meta[1], "last_contest": meta[2], "first_date": meta[3].isoformat() if meta[3] else None, "last_date": meta[4].isoformat() if meta[4] else None}
     return report
 
+@app.get("/stats/calendar")
+def stats_calendar():
+    with get_conn() as conn:
+        rows = conn.execute("SELECT contest, draw_date, n1,n2,n3,n4,n5,n6 FROM draws WHERE draw_date IS NOT NULL ORDER BY contest").fetchall()
+    records = [(r[0], r[1], list(r[2:])) for r in rows]
+    return calendar_report(records)
+
 @app.get("/draws/latest")
 def latest_draws(limit: int = 20):
     if limit < 1 or limit > 500:
@@ -105,7 +114,7 @@ async def import_csv(file: UploadFile = File(...)):
     inserted = 0
     with get_conn() as conn:
         for _, row in df.iterrows():
-            values = (int(row[normalized["concurso"]]), pd.to_datetime(row[normalized["data"]], dayfirst=True).date(), *[int(row[normalized[f"bola {i}"]]) for i in range(1, 7)])
+            values = (int(row[normalized["concurso"]]), pd.to_datetime(row[normalized["data"]], dayfirst=True).date(), *[int(row[normalized[f"bola {i}"]] ) for i in range(1, 7)])
             result = conn.execute("INSERT INTO draws (contest, draw_date, n1,n2,n3,n4,n5,n6) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (contest) DO NOTHING", values)
             inserted += result.rowcount
         conn.commit()
