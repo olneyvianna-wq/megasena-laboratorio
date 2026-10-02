@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 import pandas as pd
 
 from .db import get_conn, init_db
-from .analytics import combination_probability, frequencies, pair_frequencies, summary, statistical_report, calendar_report, independence_report
+from .analytics import combination_probability, frequencies, pair_frequencies, summary, statistical_report, calendar_report, independence_report, monte_carlo_report
 
 app = FastAPI(title="Mega-Sena Laboratório", version="0.4.0", description="API para análise estatística dos concursos da Mega-Sena.")
 
@@ -123,6 +123,14 @@ def stats_independence():
     with get_conn() as conn:
         rows = conn.execute("SELECT n1,n2,n3,n4,n5,n6 FROM draws ORDER BY contest").fetchall()
     return independence_report([list(r) for r in rows])
+
+@app.get("/stats/monte-carlo")
+def stats_monte_carlo(simulations: int = 200, seed: int = 20261002):
+    if simulations < 10 or simulations > 1000:
+        raise HTTPException(400, "simulations deve estar entre 10 e 1000.")
+    with get_conn() as conn:
+        rows = conn.execute("SELECT n1,n2,n3,n4,n5,n6 FROM draws ORDER BY contest").fetchall()
+    return monte_carlo_report([list(r) for r in rows], simulations=simulations, seed=seed)
 
 @app.get("/stats/calendar")
 def stats_calendar():
