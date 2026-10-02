@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 import pandas as pd
 
 from .db import get_conn, init_db
-from .analytics import combination_probability, frequencies, pair_frequencies, summary, statistical_report, calendar_report
+from .analytics import combination_probability, frequencies, pair_frequencies, summary, statistical_report, calendar_report, independence_report
 
 app = FastAPI(title="Mega-Sena Laboratório", version="0.4.0", description="API para análise estatística dos concursos da Mega-Sena.")
 
@@ -43,6 +43,7 @@ def _startup_report():
             "calendar_counts": cal.get("calendar_counts", {}),
             "sum_effect_tests": cal.get("sum_effect_tests", {}),
             "association_tests": cal.get("association_tests", {}),
+            "independence": independence_report(draws),
         }, ensure_ascii=False, separators=(",", ":")), flush=True)
     except Exception as exc:
         print(f"MEGASENA_REPORT_001_ERROR={exc}", flush=True)
@@ -116,6 +117,12 @@ def stats_report():
     report = statistical_report(draws)
     report["database"] = {"draws": meta[0], "first_contest": meta[1], "last_contest": meta[2], "first_date": meta[3].isoformat() if meta[3] else None, "last_date": meta[4].isoformat() if meta[4] else None}
     return report
+
+@app.get("/stats/independence")
+def stats_independence():
+    with get_conn() as conn:
+        rows = conn.execute("SELECT n1,n2,n3,n4,n5,n6 FROM draws ORDER BY contest").fetchall()
+    return independence_report([list(r) for r in rows])
 
 @app.get("/stats/calendar")
 def stats_calendar():
