@@ -218,12 +218,20 @@ def calendar_report(records):
     zodiac_counts = Counter(_zodiac(d.month, d.day) for d in dates)
     holiday_counts = Counter(_holiday_name(d) or "dia_comum" for d in dates)
 
-    def kw(groups):
-        vals = [np.array([sum(normalize_numbers(x)) for x in subset], dtype=float) for subset in groups if len(subset) >= 2]
+    def kw(raw_groups):
+        vals = [np.array([sum(normalize_numbers(x)) for x in subset], dtype=float) for subset in raw_groups if len(subset) >= 2]
         if len(vals) < 2:
             return {"statistic": None, "p_value": None}
         r = kruskal(*vals)
         return {"statistic": float(r.statistic), "p_value": float(r.pvalue)}
+
+    weekday_raw = {}
+    month_raw = {}
+    zodiac_raw = {}
+    for draw, d in zip(draws, dates):
+        weekday_raw.setdefault(d.strftime("%A"), []).append(draw)
+        month_raw.setdefault(d.month, []).append(draw)
+        zodiac_raw.setdefault(_zodiac(d.month, d.day), []).append(draw)
 
     return {
         "draws": len(draws),
@@ -244,9 +252,9 @@ def calendar_report(records):
         },
         "association_tests": association_tests,
         "sum_effect_tests": {
-            "weekday_kruskal": kw([x for x in _group_report(draws, dates, lambda d: d.strftime("%A")).values()]),
-            "month_kruskal": kw([x for x in _group_report(draws, dates, lambda d: d.month).values()]),
-            "zodiac_kruskal": kw([x for x in _group_report(draws, dates, lambda d: _zodiac(d.month, d.day)).values()]),
+            "weekday_kruskal": kw(list(weekday_raw.values())),
+            "month_kruskal": kw(list(month_raw.values())),
+            "zodiac_kruskal": kw(list(zodiac_raw.values())),
         },
         "method_note": "p-values are screening evidence, not proof of predictability; calendar variables can be confounded by the official draw schedule and multiple testing.",
     }
