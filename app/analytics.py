@@ -380,6 +380,37 @@ def monte_carlo_report(draws, simulations=200, seed=20261002):
     }
 
 
+def unique_realizable_draws(draws):
+    """Return the historical Universe of Realizables (UR): unique combinations observed."""
+    unique = {}
+    for draw in draws:
+        nums = tuple(normalize_numbers(draw))
+        unique[nums] = nums
+    return [list(nums) for nums in sorted(unique)]
+
+
+def realizables_report(draws):
+    """Re-run combination-level analysis using only unique historically observed combinations (UR)."""
+    historical = [normalize_numbers(d) for d in draws]
+    realizables = unique_realizable_draws(historical)
+    total_historical = len(historical)
+    unique_count = len(realizables)
+    repeated_observations = total_historical - unique_count
+    report = statistical_report(realizables)
+    ordered = ordered_universes_report(realizables)
+    return {
+        "universe": "UR",
+        "definition": "Conjunto das combinações de 6 dezenas distintas que já ocorreram pelo menos uma vez nos concursos históricos disponíveis.",
+        "historical_draws": total_historical,
+        "unique_realizable_combinations": unique_count,
+        "repeated_historical_observations_removed": repeated_observations,
+        "coverage_of_possible_space_percent": float(unique_count / TOTAL_COMBINATIONS * 100.0),
+        "combination_analysis": report,
+        "ordered_positions_analysis": ordered,
+        "method_note": "Neste relatório, cada combinação histórica distinta tem peso 1. A frequência de repetição de uma mesma combinação é separada da definição do UR. O UR é uma amostra histórica observada, não o universo matemático de resultados possíveis.",
+    }
+
+
 def ordered_universes_report(draws):
     """Analyze the six order-statistic universes of sorted Mega-Sena draws."""
     normalized = [normalize_numbers(d) for d in draws]
