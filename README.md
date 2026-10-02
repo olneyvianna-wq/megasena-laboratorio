@@ -6,7 +6,9 @@ Laboratório estatístico para estudo dos concursos da Mega-Sena.
 
 - armazenar todos os concursos históricos;
 - calcular estatísticas descritivas;
-- comparar resultados reais com um modelo aleatório teórico;
+- separar o **Universo dos Realizáveis (UR)** — combinações historicamente observadas — do **Universo dos Possíveis (UP)** — combinações matematicamente possíveis;
+- analisar o UR como base histórica distinta, sem preencher a base com combinações nunca observadas;
+- comparar resultados reais com modelos estatísticos quando isso for explicitamente desejado;
 - executar simulações de Monte Carlo;
 - estudar frequência, atraso, repetição, pares, trincas, consecutivos, soma, paridade e distribuição por faixas;
 - separar claramente análise estatística de qualquer alegação de previsão.
@@ -44,3 +46,9 @@ Documentação: `http://localhost:8000/docs`\n\n### Monte Carlo\n\n`GET /stats/m
 - `PORT`: porta HTTP, usada pelo Railway.
 
 \n\n### Seis universos ordenados\n\n`GET /stats/ordered-universes` analisa as seis posições após ordenar cada concurso. Para cada posição calcula suporte realizável, distribuição histórica e distribuição teórica exata do k-ésimo valor de uma amostra uniforme de 6 dezenas em 60. A condição conjunta é `x1 < x2 < ... < x6`.\n
+
+### Universo dos Realizáveis (UR)
+
+`GET /stats/realizables` refaz a análise combinatória usando apenas as combinações distintas que efetivamente apareceram no histórico. Repetições da mesma combinação são contabilizadas separadamente como observações históricas, mas não criam um novo elemento do UR.
+
+**Importante:** o UR não é uma nova probabilidade matemática. Ele é o conjunto empírico observado. A análise temporal (independência, calendário etc.) continua sendo feita sobre a sequência dos concursos, porque retirar repetições de combinações destruiria a ordem temporal necessária para esses testes.
