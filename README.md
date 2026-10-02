@@ -36,7 +36,7 @@ uvicorn app.main:app --reload
 
 API: `http://localhost:8000`
 
-Documentação: `http://localhost:8000/docs`
+Documentação: `http://localhost:8000/docs`\n\n### Monte Carlo\n\n`GET /stats/monte-carlo?simulations=200&seed=20261002` compara frequência, qui-quadrado, soma, consecutivos e sobreposição histórica com simulações independentes de 6 dezenas em 60. O endpoint aceita de 10 a 1000 simulações e não roda no startup.
 
 ## Variáveis de ambiente
 
