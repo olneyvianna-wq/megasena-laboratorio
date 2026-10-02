@@ -378,3 +378,52 @@ def monte_carlo_report(draws, simulations=200, seed=20261002):
         "comparisons": comparisons,
         "method_note": "Percentis e p-valores empíricos comparam o histórico à distribuição das simulações. Não constituem prova de previsibilidade; resultados extremos exigem confirmação e validação fora da amostra.",
     }
+
+
+def ordered_universes_report(draws):
+    """Analyze the six order-statistic universes of sorted Mega-Sena draws."""
+    normalized = [normalize_numbers(d) for d in draws]
+    n = len(normalized)
+    if n == 0:
+        return {"draws": 0}
+    arr = np.asarray(normalized, dtype=int)
+    positions = []
+    for k in range(6):
+        vals = arr[:, k]
+        # Exact support of the k-th order statistic in a uniform 6-of-60 draw:
+        # k+1 through 60-(5-k), i.e. k+1 .. 55+k (1-based position).
+        lo, hi = k + 1, 55 + k + 1
+        counts = np.bincount(vals, minlength=61)[1:]
+        # Theoretical P(X_(k)=x) = C(x-1,k) C(60-x,5-k) / C(60,6).
+        probs = np.zeros(60, dtype=float)
+        denom = math.comb(60, 6)
+        for x in range(lo, hi + 1):
+            probs[x - 1] = (math.comb(x - 1, k) * math.comb(60 - x, 5 - k)) / denom
+        expected_counts = probs * n
+        chi2_mask = expected_counts > 0
+        chi2 = float(np.sum((counts[chi2_mask] - expected_counts[chi2_mask]) ** 2 / expected_counts[chi2_mask]))
+        positions.append({
+            "position": k + 1,
+            "name": f"{k+1}ª dezena ordenada",
+            "min_realizable": int(lo),
+            "max_realizable": int(hi),
+            "observed_min": int(vals.min()),
+            "observed_max": int(vals.max()),
+            "mean": float(vals.mean()),
+            "median": float(np.median(vals)),
+            "std": float(vals.std(ddof=1)),
+            "frequency_by_number": {str(x): int(counts[x-1]) for x in range(lo, hi + 1)},
+            "theoretical_mean": float((k + 1) * 61 / 7),
+            "theoretical_probability_by_number": {str(x): float(probs[x-1]) for x in range(lo, hi + 1)},
+            "chi_square": chi2,
+        })
+    # Joint support: x1 < x2 < ... < x6. It contains exactly C(60,6) ordered tuples.
+    # Useful reduced bounds: for a partial prefix x1..xk, xk can be at most 54+k;
+    # each position also has the simple individual support above.
+    return {
+        "draws": n,
+        "positions": positions,
+        "joint_realizable_rule": "x1 < x2 < x3 < x4 < x5 < x6, com xk entre k e 55+k (indexação humana: posição k).",
+        "joint_ordered_tuples": math.comb(60, 6),
+        "important_note": "Ordenar as seis dezenas não reduz o número de combinações distintas: apenas representa cada combinação uma única vez. A redução aparece na análise por posição, que passa a ter seis distribuições condicionais e suportes menores.",
+    }
