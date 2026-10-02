@@ -305,3 +305,76 @@ def calendar_report(records):
         },
         "method_note": "p-values are screening evidence, not proof of predictability; calendar variables can be confounded by the official draw schedule and multiple testing.",
     }
+
+
+def _simulation_metrics(draws, rng):
+    """Generate an independent 6-of-60 sample with the same number of draws."""
+    n = len(draws)
+    keys = rng.random((n, 60))
+    simulated = np.argpartition(keys, 5, axis=1)[:, :6] + 1
+    simulated.sort(axis=1)
+    counts = np.bincount(simulated.ravel(), minlength=61)[1:].astype(float)
+    expected = n * 6 / 60.0
+    chi2 = float(np.sum((counts - expected) ** 2 / expected))
+    sums = simulated.sum(axis=1)
+    consecutive = np.sum(np.diff(simulated, axis=1) == 1, axis=1)
+    overlaps = np.sum(simulated[1:, :, None] == simulated[:-1, None, :], axis=(1, 2)) if n > 1 else np.array([], dtype=int)
+    return {
+        "frequency_std": float(np.std(counts, ddof=1)),
+        "frequency_max": int(np.max(counts)),
+        "frequency_min": int(np.min(counts)),
+        "chi_square_frequency": chi2,
+        "sum_mean": float(np.mean(sums)),
+        "sum_std": float(np.std(sums, ddof=1)),
+        "consecutive_pair_mean": float(np.mean(consecutive)),
+        "overlap_mean": float(np.mean(overlaps)) if len(overlaps) else None,
+    }
+
+
+def monte_carlo_report(draws, simulations=200, seed=20261002):
+    """Compare historical metrics with independent uniform 6-of-60 simulations."""
+    if not draws:
+        return {"draws": 0, "simulations": simulations, "seed": seed}
+    if simulations < 10 or simulations > 1000:
+        raise ValueError("simulations deve estar entre 10 e 1000.")
+    normalized = [normalize_numbers(d) for d in draws]
+    freq = np.array([x["count"] for x in frequencies(normalized)], dtype=float)
+    expected = len(normalized) * 6 / 60.0
+    observed = {
+        "frequency_std": float(np.std(freq, ddof=1)),
+        "frequency_max": int(np.max(freq)),
+        "frequency_min": int(np.min(freq)),
+        "chi_square_frequency": float(np.sum((freq - expected) ** 2 / expected)),
+        "sum_mean": float(np.mean([sum(d) for d in normalized])),
+        "sum_std": float(np.std([sum(d) for d in normalized], ddof=1)),
+        "consecutive_pair_mean": float(np.mean([sum(b == a + 1 for a, b in zip(d, d[1:])) for d in normalized])),
+        "overlap_mean": float(np.mean([len(set(normalized[i]) & set(normalized[i-1])) for i in range(1, len(normalized)]))) if len(normalized) > 1 else None,
+    }
+    rng = np.random.default_rng(seed)
+    metrics = {key: [] for key in observed}
+    for _ in range(simulations):
+        sim = _simulation_metrics(normalized, rng)
+        for key in metrics:
+            metrics[key].append(sim[key])
+    comparisons = {}
+    for key, obs in observed.items():
+        vals = np.asarray(metrics[key], dtype=float)
+        valid = vals[np.isfinite(vals)]
+        lower = float(np.mean(valid <= obs))
+        upper = float(np.mean(valid >= obs))
+        comparisons[key] = {
+            "observed": obs,
+            "simulated_mean": float(np.mean(valid)),
+            "simulated_std": float(np.std(valid, ddof=1)),
+            "simulated_min": float(np.min(valid)),
+            "simulated_max": float(np.max(valid)),
+            "percentile": float(lower * 100.0),
+            "empirical_two_sided_p": float(min(1.0, 2.0 * min(lower, upper))),
+        }
+    return {
+        "draws": len(normalized), "simulations": simulations, "seed": seed,
+        "null_model": "Cada concurso é uma amostra independente e uniforme de 6 dezenas distintas entre 1 e 60.",
+        "expected_frequency_per_number": expected,
+        "comparisons": comparisons,
+        "method_note": "Percentis e p-valores empíricos comparam o histórico à distribuição das simulações. Não constituem prova de previsibilidade; resultados extremos exigem confirmação e validação fora da amostra.",
+    }
