@@ -348,7 +348,7 @@ def monte_carlo_report(draws, simulations=200, seed=20261002):
         "sum_mean": float(np.mean([sum(d) for d in normalized])),
         "sum_std": float(np.std([sum(d) for d in normalized], ddof=1)),
         "consecutive_pair_mean": float(np.mean([sum(b == a + 1 for a, b in zip(d, d[1:])) for d in normalized])),
-        "overlap_mean": float(np.mean([len(set(normalized[i]) & set(normalized[i-1])) for i in range(1, len(normalized))]))) if len(normalized) > 1 else None,
+        "overlap_mean": float(np.mean([len(set(normalized[i]) & set(normalized[i-1])) for i in range(1, len(normalized))])) if len(normalized) > 1 else None,
     }
     rng = np.random.default_rng(seed)
     metrics = {key: [] for key in observed}
