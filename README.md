@@ -38,17 +38,22 @@ uvicorn app.main:app --reload
 
 API: `http://localhost:8000`
 
-Documentação: `http://localhost:8000/docs`\n\n### Monte Carlo\n\n`GET /stats/monte-carlo?simulations=200&seed=20261002` compara frequência, qui-quadrado, soma, consecutivos e sobreposição histórica com simulações independentes de 6 dezenas em 60. O endpoint aceita de 10 a 1000 simulações e não roda no startup.
+Documentação: `http://localhost:8000/docs`
 
-## Variáveis de ambiente
+### Monte Carlo
 
-- `DATABASE_URL`: URL PostgreSQL.
-- `PORT`: porta HTTP, usada pelo Railway.
+`GET /stats/monte-carlo?simulations=200&seed=20261002` compara frequência, qui-quadrado, soma, consecutivos e sobreposição histórica com simulações independentes de 6 dezenas em 60. O endpoint aceita de 10 a 1000 simulações e não roda no startup.
 
-\n\n### Seis universos ordenados\n\n`GET /stats/ordered-universes` analisa as seis posições após ordenar cada concurso. Para cada posição calcula suporte realizável, distribuição histórica e distribuição teórica exata do k-ésimo valor de uma amostra uniforme de 6 dezenas em 60. A condição conjunta é `x1 < x2 < ... < x6`.\n
+### Seis universos ordenados
+
+`GET /stats/ordered-universes` analisa as seis posições após ordenar cada concurso. Para cada posição calcula suporte realizável, distribuição histórica e distribuição teórica exata do k-ésimo valor de uma amostra uniforme de 6 dezenas em 60. A condição conjunta é `x1 < x2 < ... < x6`.
 
 ### Universo dos Realizáveis (UR)
 
 `GET /stats/realizables` refaz a análise combinatória usando apenas as combinações distintas que efetivamente apareceram no histórico. Repetições da mesma combinação são contabilizadas separadamente como observações históricas, mas não criam um novo elemento do UR.
 
 **Importante:** o UR não é uma nova probabilidade matemática. Ele é o conjunto empírico observado. A análise temporal (independência, calendário etc.) continua sendo feita sobre a sequência dos concursos, porque retirar repetições de combinações destruiria a ordem temporal necessária para esses testes.
+
+### Universos posicionais completos
+
+A rotina administrativa `POST /admin/build-position-universes` materializa no PostgreSQL os seis universos por casa, com todas as dezenas efetivamente observadas em cada posição, frequência, percentual, percentual acumulado, estatísticas descritivas, classificações numéricas e transições entre concursos consecutivos.
