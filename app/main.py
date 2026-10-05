@@ -182,6 +182,68 @@ async def import_csv(file: UploadFile = File(...)):
     return {"received": len(df), "inserted": inserted}
 
 
+@app.get("/admin/verify-position-universes")
+def verify_position_universes():
+    """Verifica materialização e retorna somente os resultados essenciais das seis casas."""
+    tables = [
+        "ur_primeira_casa", "ur_segunda_casa", "ur_terceira_casa",
+        "ur_quarta_casa", "ur_quinta_casa", "ur_sexta_casa"
+    ]
+    with get_conn() as conn:
+        exists = {}
+        for table in tables + ["ur_posicao_resumo", "ur_transicoes_numero", "ur_transicoes_caracteristicas"]:
+            row = conn.execute(
+                "SELECT to_regclass(%s)", (table,)
+            ).fetchone()
+            exists[table] = row[0] is not None
+
+        if not all(exists.values()):
+            return {"status": "incomplete", "tables": exists}
+
+        summaries = conn.execute("""
+            SELECT posicao,nome,total_observacoes,minimo,maximo,valores_distintos,
+                   media,mediana,moda,desvio_padrao,q1,q3,iqr
+            FROM ur_posicao_resumo ORDER BY posicao
+        """).fetchall()
+
+        casas = []
+        for pos, table in enumerate(tables, start=1):
+            count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            rows = conn.execute(f"""
+                SELECT numero,ocorrencias,percentual,percentual_acumulado
+                FROM {table} ORDER BY numero
+            """).fetchall()
+            casas.append({
+                "posicao": pos,
+                "tabela": table,
+                "linhas": count,
+                "dados": [
+                    {"numero": r[0], "ocorrencias": r[1],
+                     "percentual": float(r[2]), "percentual_acumulado": float(r[3])}
+                    for r in rows
+                ]
+            })
+
+        transitions = {
+            "numero_linhas": conn.execute("SELECT COUNT(*) FROM ur_transicoes_numero").fetchone()[0],
+            "caracteristicas_linhas": conn.execute("SELECT COUNT(*) FROM ur_transicoes_caracteristicas").fetchone()[0]
+        }
+
+    return {
+        "status": "ok",
+        "resumo": [
+            {
+                "posicao": r[0], "nome": r[1], "total_observacoes": r[2],
+                "minimo": r[3], "maximo": r[4], "valores_distintos": r[5],
+                "media": float(r[6]), "mediana": float(r[7]), "moda": r[8],
+                "desvio_padrao": float(r[9]), "q1": float(r[10]),
+                "q3": float(r[11]), "iqr": float(r[12])
+            } for r in summaries
+        ],
+        "casas": casas,
+        "transicoes": transitions
+    }
+
 @app.post("/admin/build-position-universes")
 def build_position_universes():
     """
