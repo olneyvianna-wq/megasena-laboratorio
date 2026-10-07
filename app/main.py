@@ -16,6 +16,7 @@ app = FastAPI(title="Mega-Sena Laboratório", version="0.4.0", description="API 
 def startup():
     init_db()
     _startup_report()
+    _position_universe_startup_report()
     if os.getenv("BACKFILL_ON_STARTUP", "false").lower() == "true":
         threading.Thread(target=_background_backfill, daemon=True).start()
 
@@ -49,6 +50,37 @@ def _startup_report():
         }, ensure_ascii=False, separators=(",", ":")), flush=True)
     except Exception as exc:
         print(f"MEGASENA_REPORT_001_ERROR={exc}", flush=True)
+
+def _position_universe_startup_report():
+    """Imprime nos logs um resumo das seis casas já materializadas."""
+    tables = [
+        "ur_primeira_casa", "ur_segunda_casa", "ur_terceira_casa",
+        "ur_quarta_casa", "ur_quinta_casa", "ur_sexta_casa"
+    ]
+    try:
+        with get_conn() as conn:
+            exists = conn.execute("SELECT to_regclass('ur_posicao_resumo')").fetchone()[0] is not None
+            if not exists:
+                print("POSITION_UNIVERSES_VERIFY=not_materialized", flush=True)
+                return
+            summaries = conn.execute("""
+                SELECT posicao,nome,total_observacoes,minimo,maximo,valores_distintos,
+                       media,mediana,moda,desvio_padrao,q1,q3,iqr
+                FROM ur_posicao_resumo ORDER BY posicao
+            """).fetchall()
+            out = []
+            for r in summaries:
+                table = tables[r[0]-1]
+                rows = conn.execute(f"SELECT numero,ocorrencias,percentual,percentual_acumulado FROM {table} ORDER BY numero").fetchall()
+                out.append({
+                    "posicao": r[0], "nome": r[1], "total": r[2], "minimo": r[3], "maximo": r[4],
+                    "distintos": r[5], "media": float(r[6]), "mediana": float(r[7]), "moda": r[8],
+                    "desvio_padrao": float(r[9]), "q1": float(r[10]), "q3": float(r[11]), "iqr": float(r[12]),
+                    "distribuicao": [{"numero": x[0], "ocorrencias": x[1], "percentual": float(x[2]), "acumulado": float(x[3])} for x in rows]
+                })
+        print("POSITION_UNIVERSES_VERIFY=" + json.dumps(out, ensure_ascii=False, separators=(",", ":")), flush=True)
+    except Exception as exc:
+        print(f"POSITION_UNIVERSES_VERIFY_ERROR={exc}", flush=True)
 
 def _background_backfill():
     try:
